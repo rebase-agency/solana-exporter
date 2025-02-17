@@ -1,3 +1,10 @@
 # builds:
 .builds
 /solana-exporter
+
+# IDE
+.idea
+.vscode
+
+# OS specific
+.DS_Store
