@@ -1,0 +1,16 @@
+name: Build project
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Build project
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+      - run: go build -v ./...
