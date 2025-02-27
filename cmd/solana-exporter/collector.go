@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/asymmetric-research/solana-exporter/pkg/rpc"
@@ -318,29 +317,30 @@ func (c *SolanaCollector) collectHealth(ctx context.Context, ch chan<- prometheu
 
 	_, err := c.rpcClient.GetHealth(ctx)
 	if err != nil {
-		var rpcError *rpc.RPCError
-		if errors.As(err, &rpcError) {
-			var errorData rpc.NodeUnhealthyErrorData
-			if rpcError.Data == nil {
-				// if there is no data, then this is some unexpected error and should just be logged
-				c.logger.Errorf("failed to get health: %v", err)
-				ch <- c.NodeIsHealthy.NewInvalidMetric(err)
-				ch <- c.NodeNumSlotsBehind.NewInvalidMetric(err)
-				return
+		if rpcError, ok := err.(*rpc.RPCError); ok && rpcError.Code == rpc.NodeUnhealthyCode {
+			var unhealthyData rpc.NodeUnhealthyErrorData
+			unpackErr := rpc.UnpackRpcErrorData(rpcError, &unhealthyData)
+			if unpackErr != nil {
+				c.logger.Fatalw("failed to unpack getHealth rpc error", "error", unpackErr)
 			}
-			if err = rpc.UnpackRpcErrorData(rpcError, errorData); err != nil {
-				// if we error here, it means we have the incorrect format
-				c.logger.Fatalf("failed to unpack %s rpc error: %v", rpcError.Method, err.Error())
+
+			// Check if NumSlotsBehind is nil
+			numSlotsBehind := int64(0)
+			if unhealthyData.NumSlotsBehind != nil {
+				numSlotsBehind = *unhealthyData.NumSlotsBehind
 			}
+			c.logger.Warnf("Node is unhealthy. Number of slots behind: %d", numSlotsBehind)
+
+			// Export metric indicating health
 			isHealthy = 0
-			numSlotsBehind = errorData.NumSlotsBehind
-		} else {
-			// if it's not an RPC error, log it
-			c.logger.Errorf("failed to get health: %v", err)
-			ch <- c.NodeIsHealthy.NewInvalidMetric(err)
-			ch <- c.NodeNumSlotsBehind.NewInvalidMetric(err)
+			ch <- c.NodeIsHealthy.MustNewConstMetric(float64(isHealthy))
+			ch <- c.NodeNumSlotsBehind.MustNewConstMetric(float64(numSlotsBehind))
 			return
 		}
+		c.logger.Fatalw("failed to get health", "error", err)
+		ch <- c.NodeIsHealthy.NewInvalidMetric(err)
+		ch <- c.NodeNumSlotsBehind.NewInvalidMetric(err)
+		return
 	}
 
 	ch <- c.NodeIsHealthy.MustNewConstMetric(float64(isHealthy))

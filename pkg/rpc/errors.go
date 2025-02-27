@@ -29,7 +29,7 @@ const (
 
 type (
 	NodeUnhealthyErrorData struct {
-		NumSlotsBehind int64 `json:"numSlotsBehind"`
+		NumSlotsBehind *int64 `json:"numSlotsBehind"`
 	}
 )
 
